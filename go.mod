@@ -101,3 +101,6 @@ require (
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.12.1 // indirect
 )
+
+// Patched copy: closes the replaced input reader (#2692). See third_party/bubbletea/AGENT-DECK-PATCH.md.
+replace github.com/charmbracelet/bubbletea => ./third_party/bubbletea
