@@ -1104,6 +1104,11 @@ type OpenClawSettings struct {
 	// Falls back to OPENCLAW_PASSWORD env var if not set.
 	Password string `toml:"password,omitempty"`
 
+	// AllowInsecure lets a plain ws:// GatewayURL point at a host that is not
+	// loopback or tailnet, sending the password unencrypted (same as passing
+	// --insecure to the openclaw commands). Prefer wss:// instead.
+	AllowInsecure bool `toml:"allow_insecure,omitempty"`
+
 	// AutoSync syncs OpenClaw agents as agent-deck sessions on TUI startup
 	AutoSync bool `toml:"auto_sync,omitempty"`
 
@@ -1160,6 +1165,14 @@ type RemoteConfig struct {
 	// enrolled once it has drained the remote (`remote drain`), which leaves a
 	// cursor behind.
 	TalkbackIntervalSecs int `toml:"talkback_interval_secs,omitempty"`
+
+	// RequireSameProfile lets this remote's records reach only a local
+	// conductor whose profile equals Profile (#2831): `remote drain` refuses
+	// any other receiving inbox, --into resolves within the effective profile
+	// only, and scheduled talkback enrolls only that profile's conductors.
+	// Off by default, because single-user setups often name profiles
+	// differently on each machine.
+	RequireSameProfile bool `toml:"require_same_profile,omitempty"`
 }
 
 // Remote attach transports accepted by RemoteConfig.Transport.
@@ -1584,6 +1597,11 @@ type LogSettings struct {
 	// AggregateIntervalS is the event aggregation flush interval in seconds
 	// Default: 30
 	AggregateIntervalS int `toml:"aggregate_interval_secs,omitzero"`
+
+	// Timings records how long each operation takes in <cache>/timings.jsonl
+	// for `agent-deck perf` (same as AGENTDECK_TIMINGS=1). Local only.
+	// Default: false
+	Timings bool `toml:"timings,omitempty"`
 }
 
 // UpdateSettings defines auto-update configuration
@@ -4345,13 +4363,18 @@ func LoadUserConfig() (*UserConfig, error) {
 		return userConfigCache, nil
 	}
 
-	if _, err := os.Stat(configPath); os.IsNotExist(err) {
+	info, statErr := os.Stat(configPath)
+	if os.IsNotExist(statErr) {
 		fresh := cloneDefaultUserConfig()
 		userConfigCache = &fresh
 		userConfigCacheMtime = time.Time{}
 		SetGroupSortMode(fresh.GetGroupSort())
 		userConfigCacheErr = nil
 		return userConfigCache, nil
+	}
+	if statErr == nil {
+		// LOC-8: warn (never refuse) when someone else could have written it.
+		warnUserConfigPerms(configPath, info)
 	}
 
 	var config UserConfig

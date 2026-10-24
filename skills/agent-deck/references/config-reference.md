@@ -722,7 +722,11 @@ How each harness receives the block (`documentation/HARNESS_IDENTITY.md` has the
 | `codex` | `-c developer_instructions="..."` (block inlined as a TOML basic string) | appends to the developer message; a configured `developer_instructions` in that `CODEX_HOME/config.toml` is merged in first; the built-in instructions are never replaced; custom codex commands get the env var only |
 | `pi` | `--append-system-prompt <file>` | also on `session fork` |
 | `gemini` | `--include-directories <dir>` (dir holds `GEMINI.md`) | only when gemini's folder trust is off or a `TRUST_FOLDER` rule in `~/.gemini/trustedFolders.json` covers `<data-dir>/agent-deck/runtime/identity`; otherwise the flag is withheld (the trust dialog would swallow `launch -m`), the pane prints the rule to add, and only the env var is set |
-| anything else (`--cmd`, opencode, cursor, ...) | `AGENTDECK_IDENTITY_FILE` env var only | the file is still written and current |
+| `opencode` | `OPENCODE_CONFIG_CONTENT={"instructions":["<file>"]}` | merged with your opencode config; skipped (env var only) when you already export `OPENCODE_CONFIG_CONTENT` |
+| `copilot` | `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` += `<session dir>/copilot` (holds `AGENTS.md`) | appended to your value |
+| anything else (`--cmd`, cursor, crush, hermes, ...) | `AGENTDECK_IDENTITY_FILE` env var only | the file is still written and current; these tools' only knobs would replace your config |
+
+SSH and Docker-sandboxed sessions get the block too: claude/pi/omp as inline `--append-system-prompt` text, codex as the same inline override (over SSH without merging the remote's own `developer_instructions`), and the file is written where the harness runs (`$XDG_RUNTIME_DIR/agent-deck/identity/<id>/identity.md`, else `~/.local/share/agent-deck/identity/<id>/identity.md`) with `AGENTDECK_IDENTITY_FILE` pointing at it; gemini stays env-only there. The SSH payload runs under `bash -c` on the remote (fish/csh login shells work; bash is required, so an sh-only remote such as Alpine/busybox is a known limit), and the identity payload is capped at 8 KB (codex drops its override first, then the block is skipped for that spawn).
 
 SSH (`--ssh`) and Docker-sandboxed sessions are skipped: the file lives on the controller host.
 
@@ -996,7 +1000,7 @@ All link keys are read at server start and served to the browser by `GET /api/se
 
 ## [global_search] Section
 
-Search across all Claude conversations.
+Settings for the old in-memory global search index. The TUI `G` key no longer reads this section: it searches the Recall index and is gated by `[recall] enabled` (see the `[recall]` section). The keys are still parsed and shown in the Settings panel.
 
 ```toml
 [global_search]
@@ -1009,7 +1013,7 @@ index_rate_limit = 20       # Files/second for indexing
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `enabled` | bool | `true` | Enable `G` key global search. |
+| `enabled` | bool | `true` | Old global search switch. Does not gate `G` (use `[recall] enabled`). |
 | `tier` | string | `"auto"` | Strategy: `instant` (fast, more RAM), `balanced` (LRU cache). |
 | `memory_limit_mb` | int | `100` | Max memory for balanced tier. |
 | `recent_days` | int | `90` | Only search recent conversations. |
@@ -1294,7 +1298,7 @@ options = { "history-limit" = "50000" }   # raw tmux options, applied after agen
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `socket_name` | string | `""` | tmux `-L <name>` selector for every agent-deck spawn. Empty shares the user's default server at `$TMUX_TMPDIR/tmux-<uid>/default`. Set it to isolate agent-deck onto its own tmux server, so its global option and key-binding writes never touch the user's interactive tmux, and a `tmux kill-server` in a shell cannot take managed sessions down. Captured per session at creation time — changing it later does **not** migrate existing sessions. CLI `--tmux-socket <name>` wins over this value. See `docs/SOCKET_ISOLATION.md`. |
+| `socket_name` | string | `""` | tmux `-L <name>` selector for every agent-deck spawn. Empty shares the user's default server at `$TMUX_TMPDIR/tmux-<uid>/default`. Set it to isolate agent-deck onto its own tmux server, so its global option and key-binding writes never touch the user's interactive tmux, and a `tmux kill-server` in a shell cannot take managed sessions down. Captured per session at creation time — changing it later does **not** migrate existing sessions. CLI `--tmux-socket <name>` wins over this value. See "Socket Isolation" in the repo README.md. |
 | `mouse` | bool | `true` | `false` never sets tmux `mouse on`, so the terminal emulator keeps raw control of mouse events — required by the VS Code Linux integrated terminal for click-drag selection. Applies both at session creation and on the reconnect configuration pass. |
 | `inject_status_line` | bool | `true` | `false` leaves the tmux status bar alone, and also disables agent-deck's global tmux notification bar and key bindings, so the runtime stops mutating global tmux options. |
 | `clear_on_restart` | bool | `false` | `true` wipes the scrollback buffer on session restart (`respawn-pane`) instead of preserving the previous run's output. |
@@ -1407,7 +1411,7 @@ show_pool_status = true     # Show 🔌 indicator
 
 **Benefits:** 30 sessions x 5 MCPs = 150 processes -> 5 shared processes (90% memory savings).
 
-**Socket location:** `/tmp/agentdeck-mcp-{name}.sock`
+**Socket location:** `<data dir>/sockets/mcp-{name}.sock` (for example `~/.agent-deck/sockets/`), private to your user. Sockets under `/tmp/agentdeck-mcp-*.sock` from old versions are ignored.
 
 ## [mcps.*] Section
 
