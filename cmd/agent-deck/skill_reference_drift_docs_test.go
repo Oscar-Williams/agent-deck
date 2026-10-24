@@ -129,3 +129,58 @@ func TestCLIReferenceWebFlagsMatchCode(t *testing.T) {
 		t.Errorf("web flags in the cli-reference.md table that web_cmd.go does not define: %v", extra)
 	}
 }
+
+// TestUserDocsRelativeLinksResolve fails when a user-facing doc links a
+// repo-relative path that does not exist. llms-full.txt is assembled by hand
+// from README.md and SKILL.md, and once kept SKILL.md's skill-relative links
+// (references/cli-reference.md, ../session-share/SKILL.md), which point
+// nowhere from the repo root.
+func TestUserDocsRelativeLinksResolve(t *testing.T) {
+	t.Parallel()
+
+	root := filepath.Join("..", "..")
+	files := []string{"README.md", "AGENTS.md", "CLAUDE.md", "CONTRIBUTING.md", "llms.txt", "llms-full.txt"}
+	for _, glob := range []string{"skills/agent-deck/*.md", "skills/agent-deck/references/*.md", "docs/*.md"} {
+		m, err := filepath.Glob(filepath.Join(root, filepath.FromSlash(glob)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, p := range m {
+			rel, _ := filepath.Rel(root, p)
+			files = append(files, filepath.ToSlash(rel))
+		}
+	}
+	if len(files) < 30 {
+		t.Fatalf("found only %d docs; a glob is wrong", len(files))
+	}
+	fenceBlock := regexp.MustCompile("(?s)```.*?```")
+	linkRe := regexp.MustCompile(`\]\(([^)\s]+)\)`)
+	schemeRe := regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9+.-]*:`)
+	checked := 0
+	for _, rel := range files {
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		if err != nil {
+			t.Fatalf("read %s: %v", rel, err)
+		}
+		text := fenceBlock.ReplaceAllString(string(data), "")
+		for _, m := range linkRe.FindAllStringSubmatch(text, -1) {
+			target, _, _ := strings.Cut(m[1], "#")
+			if target == "" || schemeRe.MatchString(target) || strings.HasPrefix(target, "<") {
+				continue
+			}
+			var p string
+			if strings.HasPrefix(target, "/") {
+				p = filepath.Join(root, filepath.FromSlash(strings.TrimPrefix(target, "/")))
+			} else {
+				p = filepath.Join(root, filepath.FromSlash(filepath.ToSlash(filepath.Dir(rel))), filepath.FromSlash(target))
+			}
+			checked++
+			if _, err := os.Stat(p); err != nil {
+				t.Errorf("%s links %q, which does not exist", rel, m[1])
+			}
+		}
+	}
+	if checked < 50 {
+		t.Fatalf("checked only %d links; the link pattern is wrong", checked)
+	}
+}
