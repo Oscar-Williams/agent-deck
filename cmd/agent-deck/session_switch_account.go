@@ -62,6 +62,11 @@ func handleSessionSwitchAccount(profile string, args []string) {
 		fmt.Println("untouched. Name the conversation explicitly with")
 		fmt.Println("`agent-deck session set claude-session-id <uuid>` and re-run.")
 		fmt.Println()
+		fmt.Println("Run from inside the session being switched, the switch is handed to a")
+		fmt.Println("detached agent-deck process instead of running here: the switch's pane")
+		fmt.Println("teardown would otherwise kill this command mid-run. The receipt names")
+		fmt.Println("the follow-up's log file.")
+		fmt.Println()
 		fmt.Println("Options:")
 		fs.PrintDefaults()
 		fmt.Println()
@@ -99,6 +104,17 @@ func handleSessionSwitchAccount(profile string, args []string) {
 		}
 		exitCLI(1)
 		return // unreachable, satisfies staticcheck SA5011
+	}
+
+	// Self-target (#2897): the switch's stop tears down the pane this
+	// process runs in, which kills it mid-switch — the transcript copy may
+	// land, the account write and the restart do not. Hand the whole
+	// switch to a detached copy of this binary and exit before any
+	// teardown starts.
+	if selfTargeted(inst.ID) {
+		if delegateSelfTargetCommand(out, profile, "switch-account", args, inst.ID) {
+			return
+		}
 	}
 
 	// The tree the restart replaces; settle waits for it to be gone.

@@ -707,6 +707,11 @@ func handleSessionRestart(profile string, args []string) {
 		fmt.Println("boots run at once, skips auth-held sessions, and STOPS early if several")
 		fmt.Println("restarts in a row die on authentication (reported as auth_tripped).")
 		fmt.Println()
+		fmt.Println("Run from inside the session being restarted, the restart is handed to a")
+		fmt.Println("detached agent-deck process instead of running here: the pane teardown")
+		fmt.Println("would otherwise kill this command mid-run. The receipt names the")
+		fmt.Println("follow-up's log file.")
+		fmt.Println()
 		fmt.Println("Options:")
 		fs.PrintDefaults()
 		fmt.Println()
@@ -753,6 +758,15 @@ func handleSessionRestart(profile string, args []string) {
 		}
 		exitCLI(1)
 		return // unreachable, satisfies staticcheck SA5011
+	}
+
+	// Self-target (#2897): restarting the session this process runs in
+	// tears down its own pane mid-command. Hand the restart to a detached
+	// copy of this binary, which runs it from outside the pane.
+	if selfTargeted(inst.ID) {
+		if delegateSelfTargetCommand(out, profile, "restart", args, inst.ID) {
+			return
+		}
 	}
 
 	// Issue #30: freshness guard. Skip the restart (keep the current tmux

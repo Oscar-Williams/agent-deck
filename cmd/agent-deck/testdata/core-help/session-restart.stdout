@@ -16,6 +16,11 @@ Re-authenticate (run /login), then restart — --force overrides the hold.
 boots run at once, skips auth-held sessions, and STOPS early if several
 restarts in a row die on authentication (reported as auth_tripped).
 
+Run from inside the session being restarted, the restart is handed to a
+detached agent-deck process instead of running here: the pane teardown
+would otherwise kill this command mid-run. The receipt names the
+follow-up's log file.
+
 Options:
   -all
     	Restart all active sessions

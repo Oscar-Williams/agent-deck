@@ -57,6 +57,16 @@ func handleSessionSwitch(profile string, args []string) {
 		out.Error(errMsg, errCode)
 		exitCLI(1)
 	}
+
+	// Self-target (#2897): the switch's stop tears down the pane this
+	// process runs in. Hand the whole switch to a detached copy of this
+	// binary, which runs the normal path from outside the pane.
+	if selfTargeted(inst.ID) {
+		if delegateSelfTargetCommand(out, profile, "switch", args, inst.ID) {
+			return
+		}
+	}
+
 	cfg, cfgErr := session.LoadUserConfig()
 	if cfgErr != nil {
 		out.Error(fmt.Sprintf("load config: %v", cfgErr), ErrCodeInvalidOperation)
