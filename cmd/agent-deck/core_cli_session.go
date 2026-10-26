@@ -223,7 +223,7 @@ func cliSessionRestart(profile string, args []string) {
 		fmt.Println("boots run at once, skips auth-held sessions, and STOPS early if several")
 		fmt.Println("restarts in a row die on authentication (reported as auth_tripped).")
 		fmt.Println()
-		fmt.Println("Run from inside the session it restarts, the restart is handed to a detached")
+		fmt.Println("Run from inside a session it restarts (including --all), the restart is handed to a detached")
 		fmt.Println("agent-deck (it ends the calling pane); the receipt names its pid and log file.")
 		fmt.Println()
 		fmt.Println("Options:")
@@ -247,7 +247,7 @@ func cliSessionRestart(profile string, args []string) {
 
 	// #2897: from inside the target, the restart ends this process; hand it
 	// to a detached child.
-	if !*all && handOffSelfRestart(out, profile, args, fs.Arg(0)) {
+	if handOffSelfRestart(out, profile, args, fs.Arg(0), *all) {
 		return
 	}
 

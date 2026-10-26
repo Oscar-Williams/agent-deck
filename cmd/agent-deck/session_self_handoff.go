@@ -145,6 +145,11 @@ func handOffIfSelfTarget(out *CLIOutput, profile, verb string, args []string, in
 		return false
 	}
 	sub := append([]string{"session", verb}, args...)
+	return handOffSelfCommand(out, profile, verb, sub, inst)
+}
+
+// handOffSelfCommand starts a command whose self-target has already been resolved.
+func handOffSelfCommand(out *CLIOutput, profile, verb string, sub []string, inst *session.Instance) bool {
 	h, err := selfHandoffStart(profile, sub)
 	if err != nil {
 		// Running in place would kill this process mid-command; refuse.
@@ -167,14 +172,15 @@ func handOffIfSelfTarget(out *CLIOutput, profile, verb string, args []string, in
 	return true
 }
 
-// handOffSelfRestart is handOffIfSelfTarget for `session restart <id>`,
+// handOffSelfRestart is handOffIfSelfTarget for `session restart <id|--all>`,
 // which resolves its session later (or in the core registry): it resolves
 // identifier only when the caller could be inside a session at all.
-func handOffSelfRestart(out *CLIOutput, profile string, args []string, identifier string) bool {
-	if awaitSelfHandoffParent() || identifier == "" {
+func handOffSelfRestart(out *CLIOutput, profile string, args []string, identifier string, all bool) bool {
+	if awaitSelfHandoffParent() || (!all && identifier == "") {
 		return false
 	}
-	if selfHandoffCallerID() == "" && selfHandoffTmuxName() == "" {
+	callerID, callerTmux := selfHandoffCallerID(), selfHandoffTmuxName()
+	if callerID == "" && callerTmux == "" {
 		return false
 	}
 	storage, instances, _, err := loadSessionData(profile)
@@ -182,9 +188,52 @@ func handOffSelfRestart(out *CLIOutput, profile string, args []string, identifie
 		return false // the restart path reports it
 	}
 	_ = storage.Close()
+	if all {
+		return handOffActiveSelfRestart(out, profile, args, instances, callerID, callerTmux)
+	}
 	inst, _, _ := ResolveSession(identifier, instances)
 	if inst == nil {
 		return false
 	}
-	return handOffIfSelfTarget(out, profile, "restart", args, inst)
+	ts := inst.GetTmuxSession()
+	if inst.ID != callerID && (callerTmux == "" || ts == nil || ts.Name != callerTmux) {
+		return false
+	}
+	return handOffSelfCommand(out, profile, "restart", append([]string{"session", "restart"}, args...), inst)
+}
+
+// The legacy handler already loaded its profile's instances. Consume the child
+// marker once, then reuse that snapshot rather than reopening storage.
+func handOffSelfRestartAll(out *CLIOutput, profile string, args []string, instances []*session.Instance) bool {
+	if awaitSelfHandoffParent() {
+		return false
+	}
+	return handOffActiveSelfRestart(out, profile, args, instances, selfHandoffCallerID(), selfHandoffTmuxName())
+}
+
+func handOffActiveSelfRestart(out *CLIOutput, profile string, args []string, instances []*session.Instance, callerID, callerTmux string) bool {
+	// Prefer the actual pane when a background worker inherited a stale ID.
+	// Only probe matching candidates: batch membership is Exists, not Status.
+	var target *session.Instance
+	if callerTmux != "" {
+		for _, inst := range instances {
+			ts := inst.GetTmuxSession()
+			if ts != nil && ts.Name == callerTmux && inst.Exists() {
+				target = inst
+				break
+			}
+		}
+	}
+	if target == nil && callerID != "" {
+		for _, inst := range instances {
+			if inst.ID == callerID && inst.Exists() {
+				target = inst
+				break
+			}
+		}
+	}
+	if target == nil {
+		return false
+	}
+	return handOffSelfCommand(out, profile, "restart --all", append([]string{"session", "restart"}, args...), target)
 }
