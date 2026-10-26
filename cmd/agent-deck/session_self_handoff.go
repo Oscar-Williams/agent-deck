@@ -157,8 +157,14 @@ func handOffSelfCommand(out *CLIOutput, profile, verb string, sub []string, inst
 		exitCLI(1)
 		return true
 	}
-	msg := fmt.Sprintf("Handed %s of %s to a detached agent-deck (pid %d): it targets the session this command runs in, whose restart ends this pane. Output: %s. Check the result with `agent-deck session show %s` once the session is back.",
-		verb, inst.Title, h.PID, h.Log, inst.ID)
+	var msg string
+	if verb == "restart --all" {
+		msg = fmt.Sprintf("Handed restart --all to a detached agent-deck (pid %d): the batch targets all active sessions, including %s; restarting the invoking session ends this pane. Read the batch result in %s.",
+			h.PID, inst.Title, h.Log)
+	} else {
+		msg = fmt.Sprintf("Handed %s of %s to a detached agent-deck (pid %d): it targets the session this command runs in, whose restart ends this pane. Output: %s. Check the result with `agent-deck session show %s` once the session is back.",
+			verb, inst.Title, h.PID, h.Log, inst.ID)
+	}
 	out.Success(msg, map[string]interface{}{
 		"success":    true,
 		"handed_off": true,

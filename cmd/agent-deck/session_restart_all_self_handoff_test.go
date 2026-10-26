@@ -32,6 +32,7 @@ func TestSessionRestartAllSelfHandoff(t *testing.T) {
 			{"tmux", true, 0},
 			{"stale-id", true, 0},
 			{"quiet", true, 0},
+			{"human", true, 0},
 			{"start-failure", false, 1},
 			{"outside", false, 0},
 			{"inactive", false, 1},
@@ -72,6 +73,16 @@ func TestSessionRestartAllSelfHandoff(t *testing.T) {
 					if !strings.Contains(text, "4242") || !strings.Contains(text, "/tmp/bulk-handoff.log") {
 						t.Fatalf("missing pid/log receipt:\n%s", output)
 					}
+					if tc.name == "human" || tc.name == "quiet" {
+						for _, want := range []string{"all active sessions", "including bulk-self", "Read the batch result in /tmp/bulk-handoff.log"} {
+							if !strings.Contains(text, want) {
+								t.Errorf("missing batch receipt %q:\n%s", want, output)
+							}
+						}
+						if strings.Contains(text, "agent-deck session show") {
+							t.Errorf("batch receipt points to a single session:\n%s", output)
+						}
+					}
 					var got struct {
 						Profile string
 						Args    []string
@@ -86,7 +97,7 @@ func TestSessionRestartAllSelfHandoff(t *testing.T) {
 					want := []string{"session", "restart", "--all", "--force", "--env", "BULK_VALUE=two words"}
 					if tc.name == "quiet" {
 						want = append(want, "--quiet")
-					} else {
+					} else if tc.name != "human" {
 						want = append(want, "--json")
 					}
 					if got.Profile != "bulk_handoff_test" || strings.Join(got.Args, "\x00") != strings.Join(want, "\x00") {
@@ -170,7 +181,7 @@ func runRestartAllSelfHandoffHelper(t *testing.T, handler, scenario string) {
 	args := []string{"--all", "--force", "--env", "BULK_VALUE=two words"}
 	if scenario == "quiet" {
 		args = append(args, "--quiet")
-	} else {
+	} else if scenario != "human" {
 		args = append(args, "--json")
 	}
 	if handler == "core" {
